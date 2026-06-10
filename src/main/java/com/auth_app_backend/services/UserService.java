@@ -1,0 +1,24 @@
+package com.auth_app_backend.services;
+
+import com.auth_app_backend.dtos.UserDto;
+
+public interface UserService {
+    //create user
+    UserDto createUser(UserDto userDto);
+
+    //get user by email
+    UserDto getUserByEmail(String email);
+
+    //update user
+    //koi problem nhi h string m bhi yha is le skte h
+    UserDto updateUser(UserDto userDto,String userId);
+
+    //delete user
+    void deleteUser(String userId);
+
+    //get user by id
+    UserDto getUserById(String userId );
+
+    //get all users
+    Iterable<UserDto> getAllUsers();
+}
