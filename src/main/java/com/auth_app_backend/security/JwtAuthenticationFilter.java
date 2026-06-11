@@ -77,22 +77,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             //set authentication to securityContext
                             //SecurityContextHolder.getContext().setAuthentication(authentication);
                             //last m for more enhance
-                            if(SecurityContextHolder.getContext().getAuthentication()!=null){
+                            if(SecurityContextHolder.getContext().getAuthentication()==null){
                                 SecurityContextHolder.getContext().setAuthentication(authentication);
                             }
                 });
 
             }catch(ExpiredJwtException e){
-                e.printStackTrace();
-            }catch(MalformedJwtException e){
-                e.printStackTrace();
-            }catch(JwtException e){
-                e.printStackTrace();
-            }catch(Exception e){
-                e.printStackTrace();
+                request.setAttribute("error","Token Expired");
+                //e.printStackTrace();
+            } catch(Exception e){
+                request.setAttribute("error","Invalid Token");
+//                e.printStackTrace();
             }
         }
         //token null ho ya na ho ..aage forward to krenge request
         filterChain.doFilter(request, response);
+    }
+
+
+    //ye badcredentials and all faltu ke exception..register and login krte time bhi aarhe the agr password ya email glt tha to
+    //register and login krte time sirf servlet erro ane chaiye..ye filter vaale nahi so remove them
+    //since "/api/v1/auth" iss url ke chlte time hum filter hi nhi krenge
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getServletPath().startsWith("/api/v1/auth");
     }
 }

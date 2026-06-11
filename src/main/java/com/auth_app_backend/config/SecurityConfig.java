@@ -1,12 +1,16 @@
 package com.auth_app_backend.config;
 
+import com.auth_app_backend.dtos.ServletErrorResponse;
 import com.auth_app_backend.security.JwtAuthenticationFilter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -27,6 +31,10 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception{
+        return authenticationConfiguration.getAuthenticationManager();
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -52,8 +60,19 @@ public class SecurityConfig {
                     authException.printStackTrace();
                     response.setStatus(401);
                     response.setContentType("application/json");
-                    String message="unauthorized access"+authException.getMessage();
-                    Map<String,String> errorMap= Map.of("message",message,"statusCode",Integer.toString(401));
+                    String message="Unauthorized access!"+authException.getMessage();
+
+                    String error=(String) request.getAttribute("error");
+                    if(error!=null){
+                        message=error;
+                    }
+
+                    Map<String, Object> errorMap = Map.of(
+                            "status", 401,
+                            "error", "Unauthorized Access",
+                            "message", message,
+                            "path", request.getRequestURI()
+                    );
                     //using object mapper write upper vala Map in form of String
                     var objectMapper = new ObjectMapper();
                     response.getWriter().write(objectMapper.writeValueAsString(errorMap));
