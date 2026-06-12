@@ -3,13 +3,14 @@ package com.auth_app_backend.controllers;
 import com.auth_app_backend.dtos.LoginRequest;
 import com.auth_app_backend.dtos.TokenResponse;
 import com.auth_app_backend.dtos.UserDto;
+import com.auth_app_backend.entities.RefreshToken;
 import com.auth_app_backend.entities.User;
+import com.auth_app_backend.repositories.RefreshTokenRepository;
 import com.auth_app_backend.repositories.UserRepository;
 import com.auth_app_backend.security.JwtService;
 import com.auth_app_backend.services.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
-import org.springframework.data.web.ReactiveOffsetScrollPositionHandlerMethodArgumentResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -22,7 +23,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.swing.text.BadLocationException;
+import java.time.Instant;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -35,6 +37,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final ModelMapper modelMapper;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest loginRequest){
@@ -45,9 +48,24 @@ public class AuthController {
             throw new DisabledException("User is disabled");
         }
 
-        //generate token
+        //generate refresh token
+        String jti= UUID.randomUUID().toString();
+        var refreshTokenOb= RefreshToken.builder()
+                .jti(jti)
+                .user(user)
+                .createdAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(jwtService.getRefreshTtlSeconds()))
+                .revoked(false)
+                .build();
+        //save refresh token info
+        refreshTokenRepository.save(refreshTokenOb);
+
+
+        //generate access token
         String accessToken=jwtService.generateAccessToken(user);
-        TokenResponse tokenResponse=TokenResponse.bearer(accessToken,"",jwtService.getAccessTtlSeconds(),modelMapper.map(user, UserDto.class));
+        //regenerating refresh token using refreshtokenOb that is saved in dB
+        String refreshToken=jwtService.generateRefreshToken(user,refreshTokenOb.getJti());
+        TokenResponse tokenResponse=TokenResponse.bearer(accessToken,refreshToken,jwtService.getAccessTtlSeconds(),modelMapper.map(user, UserDto.class));
         return ResponseEntity.ok(tokenResponse);
     }
     private Authentication authenticate(LoginRequest loginRequest){
