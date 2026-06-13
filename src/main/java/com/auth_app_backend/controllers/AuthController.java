@@ -1,16 +1,24 @@
 package com.auth_app_backend.controllers;
 
 import com.auth_app_backend.dtos.LoginRequest;
+import com.auth_app_backend.dtos.RefreshTokenRequest;
 import com.auth_app_backend.dtos.TokenResponse;
 import com.auth_app_backend.dtos.UserDto;
 import com.auth_app_backend.entities.RefreshToken;
 import com.auth_app_backend.entities.User;
 import com.auth_app_backend.repositories.RefreshTokenRepository;
 import com.auth_app_backend.repositories.UserRepository;
+import com.auth_app_backend.security.CookieService;
 import com.auth_app_backend.security.JwtService;
 import com.auth_app_backend.services.AuthService;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -23,7 +31,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.awt.dnd.DragSourceMotionListener;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -38,9 +49,11 @@ public class AuthController {
     private final JwtService jwtService;
     private final ModelMapper modelMapper;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CookieService cookieService;
+
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest loginRequest){
+    public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest loginRequest, HttpServletResponse response){
         //authenticate the user
         Authentication authenticate=authenticate(loginRequest);
         User user=userRepository.findByEmail(loginRequest.email()).orElseThrow(()->new BadCredentialsException("Invalid email or password"));
@@ -65,6 +78,11 @@ public class AuthController {
         String accessToken=jwtService.generateAccessToken(user);
         //regenerating refresh token using refreshtokenOb that is saved in dB
         String refreshToken=jwtService.generateRefreshToken(user,refreshTokenOb.getJti());
+
+        //use cookie service to attach refresh token in cookie
+        cookieService.attachRefreshCookie(response,refreshToken,(int)jwtService.getRefreshTtlSeconds());
+        cookieService.noStoreHeaders(response);
+
         TokenResponse tokenResponse=TokenResponse.bearer(accessToken,refreshToken,jwtService.getAccessTtlSeconds(),modelMapper.map(user, UserDto.class));
         return ResponseEntity.ok(tokenResponse);
     }
@@ -77,6 +95,40 @@ public class AuthController {
         }
     }
 
+    //api to renew access and refresh token
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponse>refreshToken(@RequestBody(required = false) RefreshTokenRequest body, HttpServletResponse response, HttpServletRequest request) {
+        String refreshToken=readRefreshTokenFromRequest(body,request)
+                .orElseThrow(()->new BadCredentialsException("Refresh token is missing"));
+
+        if(!jwtService.isRefreshToken(refreshToken)){
+            throw new BadCredentialsException("Invalid refresh token type");
+        }
+
+
+
+    }
+
+    //this method will read refresh token from request header or body
+    private Optional<String> readRefreshTokenFromRequest(RefreshTokenRequest body, HttpServletRequest request) {
+        //prefer reading the cookie first and then get refresh token
+        if(request.getCookies()!=null){
+            Optional<String> fromCookie=Arrays.stream(request.getCookies())
+                    .filter(c->cookieService.getRefreshTokenCookieName().equals(c.getName()))
+                    .map(Cookie::getValue)
+                    .filter(cookie->!cookie.isBlank())
+                    .findFirst();
+
+            if(fromCookie.isPresent()){
+                return fromCookie;
+            }
+        }
+        //nhi to direct refreshToken ki body dekho
+        if(body!=null && body.refreshToken()!=null){
+            return Optional.of(body.refreshToken());
+        }
+        return Optional.empty();
+    }
 
     @PostMapping("/register")
     public ResponseEntity<UserDto> registerUser(@RequestBody UserDto userDto){
