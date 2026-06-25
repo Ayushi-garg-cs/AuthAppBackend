@@ -105,7 +105,42 @@ public class AuthController {
             throw new BadCredentialsException("Invalid refresh token type");
         }
 
+        String jti=jwtService.getTokenId(refreshToken);
+        UUID userId=jwtService.getUserId(refreshToken);
+        RefreshToken storedRefreshToken=refreshTokenRepository
+                .findByJti(jti).orElseThrow(()->new  BadCredentialsException("Invalid refresh token"));
+        //extra
+        if(storedRefreshToken.isRevoked()){
+            throw new BadCredentialsException("Refresh token expired or revoked");
+        }
+        if(storedRefreshToken.getExpiresAt().isBefore(Instant.now())){
+            throw new BadCredentialsException("Refresh token expired");
+        }
+        if(storedRefreshToken.getUser().getId().equals(userId)){
+            throw new BadCredentialsException("Refresh token does not not belong to this user");
+        }
 
+        //refresh token ko rotate
+        storedRefreshToken.setRevoked(true);
+        String newJti=UUID.randomUUID().toString();
+        storedRefreshToken.setReplacedByToken(newJti);
+        refreshTokenRepository.save(storedRefreshToken);
+
+        User user=storedRefreshToken.getUser();
+        var newRefreshTokenOb=RefreshToken.builder()
+                .jti(newJti)
+                .user(user)
+                .createdAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(jwtService.getRefreshTtlSeconds()))
+                .revoked(false)
+                .build();
+        refreshTokenRepository.save(newRefreshTokenOb);
+        String newAccessToken=jwtService.generateAccessToken(user);
+        String newRefreshToken=jwtService.generateRefreshToken(user,newRefreshTokenOb.getJti());
+
+        cookieService.attachRefreshCookie(response,newRefreshToken,(int)jwtService.getRefreshTtlSeconds());
+        cookieService.noStoreHeaders(response);
+        return ResponseEntity.ok(TokenResponse.of(newAccessToken,refreshToken,jwtService.getAccessTtlSeconds(),modelMapper.map(user,UserDto.class)));
 
     }
 
