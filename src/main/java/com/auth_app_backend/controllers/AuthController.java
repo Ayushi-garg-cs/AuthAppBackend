@@ -11,6 +11,7 @@ import com.auth_app_backend.repositories.UserRepository;
 import com.auth_app_backend.security.CookieService;
 import com.auth_app_backend.security.JwtService;
 import com.auth_app_backend.services.AuthService;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -26,6 +27,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -116,7 +118,7 @@ public class AuthController {
         if(storedRefreshToken.getExpiresAt().isBefore(Instant.now())){
             throw new BadCredentialsException("Refresh token expired");
         }
-        if(storedRefreshToken.getUser().getId().equals(userId)){
+        if(!storedRefreshToken.getUser().getId().equals(userId)){
             throw new BadCredentialsException("Refresh token does not not belong to this user");
         }
 
@@ -140,7 +142,7 @@ public class AuthController {
 
         cookieService.attachRefreshCookie(response,newRefreshToken,(int)jwtService.getRefreshTtlSeconds());
         cookieService.noStoreHeaders(response);
-        return ResponseEntity.ok(TokenResponse.of(newAccessToken,refreshToken,jwtService.getAccessTtlSeconds(),modelMapper.map(user,UserDto.class)));
+        return ResponseEntity.ok(TokenResponse.bearer(newAccessToken,newRefreshToken,jwtService.getAccessTtlSeconds(),modelMapper.map(user,UserDto.class)));
 
     }
 
@@ -163,6 +165,29 @@ public class AuthController {
             return Optional.of(body.refreshToken());
         }
         return Optional.empty();
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request,HttpServletResponse response) {
+        readRefreshTokenFromRequest(null,request).ifPresent(token->{
+            try{
+                if(jwtService.isRefreshToken(token)){
+                    String jti=jwtService.getTokenId(token);
+                    refreshTokenRepository.findByJti(jti).ifPresent(rt->{
+                        rt.setRevoked(true);
+                        refreshTokenRepository.save(rt);
+                    });
+                }
+
+            }catch(JwtException ignored){}
+        });
+
+        //use Cookie util
+        cookieService.clearRefreshCookie(response);
+        cookieService.noStoreHeaders(response);
+        SecurityContextHolder.clearContext();
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+
     }
 
     @PostMapping("/register")

@@ -2,6 +2,7 @@ package com.auth_app_backend.config;
 
 import com.auth_app_backend.dtos.ServletErrorResponse;
 import com.auth_app_backend.security.JwtAuthenticationFilter;
+import com.auth_app_backend.security.OAuth2SuccessHandler;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.util.Map;
@@ -30,6 +32,8 @@ import java.util.Map;
 public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+    @Autowired
+    private OAuth2SuccessHandler successHandler;
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception{
@@ -50,8 +54,17 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
                         .requestMatchers("/api/v1/auth/register").permitAll()
                         .requestMatchers("/api/v1/auth/login").permitAll()
+                        .requestMatchers("/api/v1/auth/refresh").permitAll()
+                        .requestMatchers("/api/v1/auth/logout").permitAll()
                         .anyRequest().authenticated()
                 )
+
+                //agr google se login ho jata h to successHandler ye chalega and fail to failureHandler ye
+                .oauth2Login(oauth2->
+                        oauth2.successHandler(successHandler)
+                )
+                .logout(AbstractHttpConfigurer::disable)
+
                 //jwt auth use kr rhe h to httpbasic vaali line hta denge
                 //.httpBasic(Customizer.withDefaults());
                 //when someone is trying to access protected apis
