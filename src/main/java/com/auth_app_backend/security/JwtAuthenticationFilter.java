@@ -32,7 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         //fetch the token first
         String header=request.getHeader("Authorization");
-        if (header != null || header.startsWith("Bearer ")) {
+        if (header != null) {
             //extract the token and validate and then create authentication and then security context ke andar set krna
             String token=header.substring(7);
 
